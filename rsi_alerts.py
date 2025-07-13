@@ -75,14 +75,23 @@ def check_rsi_alert(ticker):
     elif 30 <= current_rsi <= 70 and last_state != "neutral":
         write_last_alert(ticker, "neutral")
 
+    return current_rsi
+
 if __name__ == "__main__":
     if not os.path.exists(TICKERS_FILE):
         print("Ticker file not found.")
     else:
         with open(TICKERS_FILE, "r") as f:
             tickers = [line.strip() for line in f if line.strip()]
+
+        results = []
         for ticker in tickers:
             try:
-                check_rsi_alert(ticker)
+                rsi_value = check_rsi_alert(ticker)
+                results.append({"Ticker": ticker, "RSI": round(rsi_value, 2)})
             except Exception as e:
                 print(f"Error processing {ticker}: {e}")
+
+        df = pd.DataFrame(results)
+        print("\nCurrent RSI Values:")
+        print(df.to_string(index=False))
