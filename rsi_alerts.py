@@ -83,3 +83,44 @@ with st.spinner("Fetching RSI data..."):
                 alert_status = "Sent (Oversold)"
             elif current_rsi > 70:
                 send_email(
+                    subject=f"RSI Alert: {ticker} is Overbought",
+                    body=f"The RSI for {ticker} has risen above 70. Current RSI: {current_rsi:.2f}"
+                )
+                alert_status = "Sent (Overbought)"
+
+            print(f"Adding {ticker} with RSI={current_rsi}, Alert={alert_status}")
+            results.append({"Ticker": ticker, "RSI": current_rsi, "Alert Status": alert_status})
+
+        except Exception as e:
+            print(f"Error processing {ticker}: {e}")
+            results.append({"Ticker": ticker, "RSI": "N/A", "Alert Status": "Error"})
+            st.error(f"Error processing {ticker}: {e}")
+
+print(f"\nRSI summary rows: {len(results)}")
+
+if results:
+    df = pd.DataFrame(results)[["Ticker", "RSI", "Alert Status"]]
+
+    def color_rsi(val):
+        try:
+            v = float(val)
+            if v < 30:
+                return "background-color: #ffcccc"  # red shade
+            elif v > 70:
+                return "background-color: #ccffcc"  # green shade
+            else:
+                return "background-color: #ffffcc"  # yellow shade
+        except:
+            return "background-color: #f2f2f2"  # light grey for N/A
+
+    styled_df = df.style.format({"RSI": "{:.2f}"}).applymap(color_rsi, subset=["RSI"])
+
+    print("\nFinal RSI Summary:")
+    print(df.to_string(index=False))
+
+    st.success("RSI data retrieved successfully!")
+    st.write("### Current RSI Summary")
+    st.dataframe(styled_df, use_container_width=True)
+else:
+    print("No RSI data was calculated.")
+    st.warning("No RSI data was calculated.", icon="⚠️")
