@@ -2,15 +2,14 @@ import yfinance as yf
 import pandas as pd
 import smtplib
 from email.mime.text import MIMEText
-import os
 import streamlit as st
 import requests
 
-# Email sending function
+# Email sending function using Streamlit secrets
 def send_email(subject, body):
-    from_address = os.environ.get("EMAIL_FROM")
-    to_address = os.environ.get("EMAIL_TO")
-    password = os.environ.get("EMAIL_PASS")
+    from_address = st.secrets["EMAIL_FROM"]
+    to_address = st.secrets["EMAIL_TO"]
+    password = st.secrets["EMAIL_PASS"]
 
     msg = MIMEText(body)
     msg["Subject"] = subject
@@ -21,7 +20,7 @@ def send_email(subject, body):
         server.login(from_address, password)
         server.send_message(msg)
 
-# RSI calculation using Wilder's exponential smoothing
+# RSI calculation using Wilder's method
 def calculate_rsi(series, period=14):
     if series.dropna().shape[0] < period + 1:
         raise ValueError("Not enough data to calculate RSI")
@@ -82,24 +81,4 @@ with st.spinner("Fetching RSI data..."):
             results.append({"Ticker": ticker, "RSI": current_rsi, "Alert Status": alert_status})
 
         except Exception as e:
-            print(f"Error processing {ticker}: {e}")
-            results.append({"Ticker": ticker, "RSI": "N/A", "Alert Status": f"Error: {str(e)}"})
-
-# Display results
-if results:
-    df = pd.DataFrame(results)
-
-    def color_rsi(val):
-        try:
-            v = float(val)
-            if v < 30:
-                return "background-color: #ffcccc"
-            elif v > 70:
-                return "background-color: #ccffcc"
-            else:
-                return "background-color: #ffffcc"
-        except:
-            return "background-color: #f2f2f2"
-
-    styled_df = df.style.format({
-        "RSI": lambda x: f"{x:.2f}" if isinstance(x
+            print(f"Error processing {t
