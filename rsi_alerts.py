@@ -1,10 +1,11 @@
-# rsi_alerts.py (Streamlit version with full debug logging)
+# rsi_alerts.py (Streamlit version reading tickers from GitHub)
 import yfinance as yf
 import pandas as pd
 import smtplib
 from email.mime.text import MIMEText
 import os
 import streamlit as st
+import requests
 
 # Email configuration from environment or secrets
 def send_email(subject, body):
@@ -36,78 +37,82 @@ def calculate_rsi(series, period=14):
 st.set_page_config(page_title="RSI Monitor", layout="centered")
 st.title("📈 RSI Monitor for Stocks")
 
-uploaded_file = st.file_uploader("Upload a list of stock tickers (one per line)", type="txt")
+# GitHub raw URL of tickers.txt
+github_ticker_url = "https://raw.githubusercontent.com/anujvarma-original/yencarrytrade/main/tickers.txt"
 
-if uploaded_file is not None:
-    tickers = [line.decode("utf-8").strip() for line in uploaded_file.readlines() if line.strip()]
-    results = []
+try:
+    response = requests.get(github_ticker_url)
+    response.raise_for_status()
+    tickers = [line.strip() for line in response.text.splitlines() if line.strip()]
+except Exception as e:
+    st.error(f"Failed to load tickers from GitHub: {e}")
+    st.stop()
 
-    with st.spinner("Fetching RSI data..."):
-        for ticker in tickers:
-            try:
-                print(f"Processing {ticker}...")
-                data = yf.download(ticker, period="3mo", interval="1d", auto_adjust=False)
-                if data.empty or "Close" not in data.columns:
-                    print(f"No data for {ticker}. Skipping.")
-                    continue
+results = []
+with st.spinner("Fetching RSI data..."):
+    for ticker in tickers:
+        try:
+            print(f"Processing {ticker}...")
+            data = yf.download(ticker, period="3mo", interval="1d", auto_adjust=False)
+            if data.empty or "Close" not in data.columns:
+                print(f"No data for {ticker}. Skipping.")
+                continue
 
-                close_prices = data["Close"]
-                rsi = calculate_rsi(close_prices)
+            close_prices = data["Close"]
+            rsi = calculate_rsi(close_prices)
 
-                print(f"RSI raw series tail for {ticker}:")
-                print(rsi.tail())
+            print(f"RSI raw series tail for {ticker}:")
+            print(rsi.tail())
 
-                if rsi.empty or rsi.isna().all():
-                    print(f"RSI is empty or all NaN for {ticker}. Skipping.")
-                    continue
+            if rsi.empty or rsi.isna().all():
+                print(f"RSI is empty or all NaN for {ticker}. Skipping.")
+                continue
 
-                current_rsi = rsi.dropna().iloc[-1]
-                current_rsi = round(current_rsi, 2)
-                alert_status = "Not Sent"
+            current_rsi = rsi.dropna().iloc[-1]
+            current_rsi = round(current_rsi, 2)
+            alert_status = "Not Sent"
 
-                if current_rsi < 30:
-                    send_email(
-                        subject=f"RSI Alert: {ticker} is Oversold",
-                        body=f"The RSI for {ticker} has dropped below 30. Current RSI: {current_rsi:.2f}"
-                    )
-                    alert_status = "Sent (Oversold)"
-                elif current_rsi > 70:
-                    send_email(
-                        subject=f"RSI Alert: {ticker} is Overbought",
-                        body=f"The RSI for {ticker} has risen above 70. Current RSI: {current_rsi:.2f}"
-                    )
-                    alert_status = "Sent (Overbought)"
+            if current_rsi < 30:
+                send_email(
+                    subject=f"RSI Alert: {ticker} is Oversold",
+                    body=f"The RSI for {ticker} has dropped below 30. Current RSI: {current_rsi:.2f}"
+                )
+                alert_status = "Sent (Oversold)"
+            elif current_rsi > 70:
+                send_email(
+                    subject=f"RSI Alert: {ticker} is Overbought",
+                    body=f"The RSI for {ticker} has risen above 70. Current RSI: {current_rsi:.2f}"
+                )
+                alert_status = "Sent (Overbought)"
 
-                print(f"Adding {ticker} with RSI={current_rsi}, Alert={alert_status}")
-                results.append({"Ticker": ticker, "RSI": current_rsi, "Alert Status": alert_status})
+            print(f"Adding {ticker} with RSI={current_rsi}, Alert={alert_status}")
+            results.append({"Ticker": ticker, "RSI": current_rsi, "Alert Status": alert_status})
 
-            except Exception as e:
-                print(f"Error processing {ticker}: {e}")
-                st.error(f"Error processing {ticker}: {e}")
+        except Exception as e:
+            print(f"Error processing {ticker}: {e}")
+            st.error(f"Error processing {ticker}: {e}")
 
-    print(f"\nRSI summary rows: {len(results)}")
+print(f"\nRSI summary rows: {len(results)}")
 
-    if results:
-        df = pd.DataFrame(results)[["Ticker", "RSI", "Alert Status"]]
+if results:
+    df = pd.DataFrame(results)[["Ticker", "RSI", "Alert Status"]]
 
-        def color_rsi(val):
-            if val < 30:
-                return "background-color: #ffcccc"  # red shade
-            elif val > 70:
-                return "background-color: #ccffcc"  # green shade
-            else:
-                return "background-color: #ffffcc"  # yellow shade
+    def color_rsi(val):
+        if val < 30:
+            return "background-color: #ffcccc"  # red shade
+        elif val > 70:
+            return "background-color: #ccffcc"  # green shade
+        else:
+            return "background-color: #ffffcc"  # yellow shade
 
-        styled_df = df.style.format({"RSI": "{:.2f}"}).applymap(color_rsi, subset=["RSI"])
+    styled_df = df.style.format({"RSI": "{:.2f}"}).applymap(color_rsi, subset=["RSI"])
 
-        print("\nFinal RSI Summary:")
-        print(df.to_string(index=False))
+    print("\nFinal RSI Summary:")
+    print(df.to_string(index=False))
 
-        st.success("RSI data retrieved successfully!")
-        st.write("### Current RSI Summary")
-        st.dataframe(styled_df, use_container_width=True)
-    else:
-        print("No RSI data was calculated.")
-        st.warning("No RSI data was calculated.")
+    st.success("RSI data retrieved successfully!")
+    st.write("### Current RSI Summary")
+    st.dataframe(styled_df, use_container_width=True)
 else:
-    st.info("Please upload a ticker list to begin.")
+    print("No RSI data was calculated.")
+    st.warning
