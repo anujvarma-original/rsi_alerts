@@ -1,4 +1,4 @@
-# rsi_alerts.py (Streamlit version reading tickers from GitHub)
+# rsi_alerts.py (Streamlit version reading tickers from GitHub and showing all tickers)
 import yfinance as yf
 import pandas as pd
 import smtplib
@@ -54,8 +54,10 @@ with st.spinner("Fetching RSI data..."):
         try:
             print(f"Processing {ticker}...")
             data = yf.download(ticker, period="3mo", interval="1d", auto_adjust=False)
+
             if data.empty or "Close" not in data.columns:
-                print(f"No data for {ticker}. Skipping.")
+                print(f"No data for {ticker}. Marking as unavailable.")
+                results.append({"Ticker": ticker, "RSI": "N/A", "Alert Status": "Data Missing"})
                 continue
 
             close_prices = data["Close"]
@@ -65,7 +67,8 @@ with st.spinner("Fetching RSI data..."):
             print(rsi.tail())
 
             if rsi.empty or rsi.isna().all():
-                print(f"RSI is empty or all NaN for {ticker}. Skipping.")
+                print(f"RSI is empty or all NaN for {ticker}. Including as N/A.")
+                results.append({"Ticker": ticker, "RSI": "N/A", "Alert Status": "Insufficient Data"})
                 continue
 
             current_rsi = rsi.dropna().iloc[-1]
@@ -80,39 +83,3 @@ with st.spinner("Fetching RSI data..."):
                 alert_status = "Sent (Oversold)"
             elif current_rsi > 70:
                 send_email(
-                    subject=f"RSI Alert: {ticker} is Overbought",
-                    body=f"The RSI for {ticker} has risen above 70. Current RSI: {current_rsi:.2f}"
-                )
-                alert_status = "Sent (Overbought)"
-
-            print(f"Adding {ticker} with RSI={current_rsi}, Alert={alert_status}")
-            results.append({"Ticker": ticker, "RSI": current_rsi, "Alert Status": alert_status})
-
-        except Exception as e:
-            print(f"Error processing {ticker}: {e}")
-            st.error(f"Error processing {ticker}: {e}")
-
-print(f"\nRSI summary rows: {len(results)}")
-
-if results:
-    df = pd.DataFrame(results)[["Ticker", "RSI", "Alert Status"]]
-
-    def color_rsi(val):
-        if val < 30:
-            return "background-color: #ffcccc"  # red shade
-        elif val > 70:
-            return "background-color: #ccffcc"  # green shade
-        else:
-            return "background-color: #ffffcc"  # yellow shade
-
-    styled_df = df.style.format({"RSI": "{:.2f}"}).applymap(color_rsi, subset=["RSI"])
-
-    print("\nFinal RSI Summary:")
-    print(df.to_string(index=False))
-
-    st.success("RSI data retrieved successfully!")
-    st.write("### Current RSI Summary")
-    st.dataframe(styled_df, use_container_width=True)
-else:
-    print("No RSI data was calculated.")
-    st.warning
