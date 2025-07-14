@@ -1,4 +1,4 @@
-# rsi_alerts.py (Streamlit version reading tickers from GitHub and showing all tickers)
+# rsi_alerts.py (Streamlit version with full RSI debugging and validation)
 import yfinance as yf
 import pandas as pd
 import smtplib
@@ -22,8 +22,10 @@ def send_email(subject, body):
         server.login(from_address, password)
         server.send_message(msg)
 
-# Calculate RSI
+# Calculate RSI (simple method)
 def calculate_rsi(series, period=14):
+    if series.dropna().shape[0] < period + 1:
+        raise ValueError("Not enough data to calculate RSI")
     delta = series.diff()
     gain = delta.where(delta > 0, 0.0)
     loss = -delta.where(delta < 0, 0.0)
@@ -53,18 +55,22 @@ with st.spinner("Fetching RSI data..."):
     for ticker in tickers:
         try:
             print(f"Processing {ticker}...")
-            data = yf.download(ticker, period="3mo", interval="1d", auto_adjust=False)
+            data = yf.download(ticker, period="3mo", interval="1d", auto_adjust=True)
 
             if data.empty or "Close" not in data.columns:
                 print(f"No data for {ticker}. Marking as unavailable.")
                 results.append({"Ticker": ticker, "RSI": "N/A", "Alert Status": "Data Missing"})
                 continue
 
-            close_prices = data["Close"]
-            rsi = calculate_rsi(close_prices)
+            close_prices = data["Close"].dropna()
+            print(f"Close prices for {ticker} (tail):\n{close_prices.tail(20)}")
 
-            print(f"RSI raw series tail for {ticker}:")
-            print(rsi.tail())
+            try:
+                rsi = calculate_rsi(close_prices)
+            except ValueError as ve:
+                print(f"RSI calc error for {ticker}: {ve}")
+                results.append({"Ticker": ticker, "RSI": "N/A", "Alert Status": "Insufficient Data"})
+                continue
 
             if rsi.empty or rsi.isna().all():
                 print(f"RSI is empty or all NaN for {ticker}. Including as N/A.")
