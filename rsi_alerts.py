@@ -1,4 +1,4 @@
-# rsi_alerts.py (Streamlit version)
+# rsi_alerts.py (Streamlit version with alert status)
 import yfinance as yf
 import pandas as pd
 import smtplib
@@ -51,28 +51,25 @@ if uploaded_file is not None:
 
                 close_prices = data["Close"]
                 rsi = calculate_rsi(close_prices)
-                current_rsi = rsi.iloc[-1]
-                results.append({"Ticker": ticker, "RSI": round(current_rsi, 2)})
+                current_rsi = round(rsi.iloc[-1], 2)
+                alert_status = "Not Sent"
 
                 if current_rsi < 30:
                     send_email(
                         subject=f"RSI Alert: {ticker} is Oversold",
                         body=f"The RSI for {ticker} has dropped below 30. Current RSI: {current_rsi:.2f}"
                     )
+                    alert_status = "Sent (Oversold)"
                 elif current_rsi > 70:
                     send_email(
                         subject=f"RSI Alert: {ticker} is Overbought",
                         body=f"The RSI for {ticker} has risen above 70. Current RSI: {current_rsi:.2f}"
                     )
+                    alert_status = "Sent (Overbought)"
+
+                results.append({"Ticker": ticker, "RSI": current_rsi, "Alert Status": alert_status})
 
             except Exception as e:
                 st.error(f"Error processing {ticker}: {e}")
 
-    if results:
-        df = pd.DataFrame(results)
-        st.success("RSI data retrieved successfully!")
-        st.dataframe(df)
-    else:
-        st.warning("No RSI data was calculated.")
-else:
-    st.info("Please upload a ticker list to begin.")
+    if resu
