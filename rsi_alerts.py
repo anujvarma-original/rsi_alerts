@@ -45,7 +45,12 @@ if __name__ == "__main__":
 
     for ticker in tickers:
         try:
-            data = yf.download(ticker, period="3mo", interval="1d")
+            print(f"Processing {ticker}...")
+            data = yf.download(ticker, period="3mo", interval="1d", auto_adjust=False)
+            if data.empty or "Close" not in data.columns:
+                print(f"No data for {ticker}. Skipping.")
+                continue
+
             close_prices = data["Close"]
             rsi = calculate_rsi(close_prices)
             current_rsi = rsi.iloc[-1]
@@ -65,6 +70,9 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"Error processing {ticker}: {e}")
 
-    df = pd.DataFrame(results)
-    print("\nCurrent RSI Values:")
-    print(df.to_string(index=False))
+    if results:
+        df = pd.DataFrame(results)
+        print("\nCurrent RSI Values:")
+        print(df.to_string(index=False))
+    else:
+        print("No RSI data was calculated.")
