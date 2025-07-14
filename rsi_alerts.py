@@ -22,34 +22,47 @@ def send_email(subject, body):
         server.login(from_address, email_password)
         server.send_message(msg)
 
-# Alpha Vantage RSI fetcher with error diagnostics
-def get_rsi_alphavantage(ticker, api_key):
-    url = (
+# Alpha Vantage RSI and price fetcher with error diagnostics
+def get_rsi_and_price(ticker, api_key):
+    rsi_url = (
         f"https://www.alphavantage.co/query?function=RSI&symbol={ticker}"
         f"&interval=daily&time_period=14&series_type=close&apikey={api_key}"
     )
+    price_url = (
+        f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={ticker}"
+        f"&apikey={api_key}"
+    )
     try:
-        response = requests.get(url)
-        response.raise_for_status()
-        data = response.json()
+        rsi_response = requests.get(rsi_url)
+        rsi_response.raise_for_status()
+        rsi_data = rsi_response.json()
 
-        if "Note" in data:
+        if "Note" in rsi_data:
             raise ValueError("API rate limit exceeded")
-        if "Error Message" in data:
+        if "Error Message" in rsi_data:
             raise ValueError("Invalid ticker or unsupported symbol")
 
-        rsi_data = data.get("Technical Analysis: RSI", {})
-        if not rsi_data:
+        rsi_tech = rsi_data.get("Technical Analysis: RSI", {})
+        if not rsi_tech:
             raise ValueError("RSI data missing from response")
 
-        latest_date = sorted(rsi_data.keys())[-1]
-        rsi_value = rsi_data[latest_date].get("RSI")
+        latest_date = sorted(rsi_tech.keys())[-1]
+        rsi_value = rsi_tech[latest_date].get("RSI")
         if rsi_value is None:
-            raise ValueError("RSI value not found for latest date")
+            raise ValueError("RSI value not found")
 
-        return float(rsi_value)
+        price_response = requests.get(price_url)
+        price_response.raise_for_status()
+        price_data = price_response.json()
+        quote = price_data.get("Global Quote", {})
+        price = quote.get("05. price")
+
+        if price is None:
+            raise ValueError("Price data missing")
+
+        return float(rsi_value), float(price)
     except Exception as e:
-        return f"Error: {str(e)}"
+        return f"Error: {str(e)}", None
 
 # Streamlit UI
 st.set_page_config(page_title="RSI Monitor", layout="centered")
@@ -67,31 +80,31 @@ except Exception as e:
 
 results = []
 
-with st.spinner("Fetching RSI data from Alpha Vantage..."):
+with st.spinner("Fetching RSI and price data from Alpha Vantage..."):
     for ticker in tickers:
-        print(f"Fetching RSI for {ticker}...")
-        rsi_value = get_rsi_alphavantage(ticker, api_key)
+        print(f"Fetching RSI and price for {ticker}...")
+        rsi_value, price = get_rsi_and_price(ticker, api_key)
         time.sleep(12)  # respect free tier limits
 
         if isinstance(rsi_value, str) and rsi_value.startswith("Error"):
-            results.append({"Ticker": ticker, "RSI": "N/A", "Alert Status": rsi_value})
+            results.append({"Ticker": ticker, "RSI": "N/A", "Price": "N/A", "Alert Status": rsi_value})
             continue
 
         alert_status = "Not Sent"
         if rsi_value < 30:
             send_email(
                 subject=f"RSI Alert: {ticker} is Oversold",
-                body=f"The RSI for {ticker} has dropped below 30. Current RSI: {rsi_value}"
+                body=f"The RSI for {ticker} has dropped below 30. Current RSI: {rsi_value}, Price: ${price:.2f}"
             )
             alert_status = "Sent (Oversold)"
         elif rsi_value > 70:
             send_email(
                 subject=f"RSI Alert: {ticker} is Overbought",
-                body=f"The RSI for {ticker} has risen above 70. Current RSI: {rsi_value}"
+                body=f"The RSI for {ticker} has risen above 70. Current RSI: {rsi_value}, Price: ${price:.2f}"
             )
             alert_status = "Sent (Overbought)"
 
-        results.append({"Ticker": ticker, "RSI": round(rsi_value, 2), "Alert Status": alert_status})
+        results.append({"Ticker": ticker, "RSI": round(rsi_value, 2), "Price": round(price, 2), "Alert Status": alert_status})
 
 # Display results
 if results:
@@ -110,11 +123,12 @@ if results:
             return "background-color: #f2f2f2"
 
     styled_df = df.style.format({
-        "RSI": lambda x: f"{x:.2f}" if isinstance(x, (int, float)) else x
+        "RSI": lambda x: f"{x:.2f}" if isinstance(x, (int, float)) else x,
+        "Price": lambda x: f"${x:.2f}" if isinstance(x, (int, float)) else x
     }).applymap(color_rsi, subset=["RSI"])
 
-    st.success("RSI data retrieved successfully!")
-    st.write("### Current RSI Summary")
+    st.success("RSI and price data retrieved successfully!")
+    st.write("### Current RSI & Price Summary")
     st.dataframe(styled_df, use_container_width=True)
 else:
     st.warning("No RSI data was calculated.", icon="⚠️")
