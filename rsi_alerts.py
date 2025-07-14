@@ -1,4 +1,4 @@
-# rsi_alerts.py (Streamlit version with full RSI debugging and validation)
+# rsi_alerts.py (Streamlit version with decoupled RSI calculation and rendering)
 import yfinance as yf
 import pandas as pd
 import smtplib
@@ -66,21 +66,15 @@ with st.spinner("Fetching RSI data..."):
             print(f"Close prices for {ticker} (tail):\n{close_prices.tail(20)}")
 
             try:
-                rsi = calculate_rsi(close_prices)
+                rsi_series = calculate_rsi(close_prices)
+                current_rsi = rsi_series.dropna().iloc[-1]
+                current_rsi = round(current_rsi, 2)
             except ValueError as ve:
                 print(f"RSI calc error for {ticker}: {ve}")
                 results.append({"Ticker": ticker, "RSI": "N/A", "Alert Status": "Insufficient Data"})
                 continue
 
-            if rsi.empty or rsi.isna().all():
-                print(f"RSI is empty or all NaN for {ticker}. Including as N/A.")
-                results.append({"Ticker": ticker, "RSI": "N/A", "Alert Status": "Insufficient Data"})
-                continue
-
-            current_rsi = rsi.dropna().iloc[-1]
-            current_rsi = round(current_rsi, 2)
             alert_status = "Not Sent"
-
             if current_rsi < 30:
                 send_email(
                     subject=f"RSI Alert: {ticker} is Oversold",
@@ -104,6 +98,7 @@ with st.spinner("Fetching RSI data..."):
 
 print(f"\nRSI summary rows: {len(results)}")
 
+# Format and display results in table
 if results:
     df = pd.DataFrame(results)[["Ticker", "RSI", "Alert Status"]]
 
