@@ -1,11 +1,10 @@
-# rsi_alerts.py
+# rsi_alerts.py (Streamlit version)
 import yfinance as yf
 import pandas as pd
 import smtplib
 from email.mime.text import MIMEText
 import os
-
-TICKERS_FILE = "tickers.txt"
+import streamlit as st
 
 # Email configuration from environment or secrets
 def send_email(subject, body):
@@ -33,46 +32,47 @@ def calculate_rsi(series, period=14):
     rsi = 100 - (100 / (1 + rs))
     return rsi
 
-if __name__ == "__main__":
-    if not os.path.exists(TICKERS_FILE):
-        print("Ticker file not found.")
-        exit()
+# Streamlit UI
+st.title("📈 RSI Monitor for Stocks")
 
-    with open(TICKERS_FILE, "r") as f:
-        tickers = [line.strip() for line in f if line.strip()]
+uploaded_file = st.file_uploader("Upload a list of stock tickers (one per line)", type="txt")
 
+if uploaded_file is not None:
+    tickers = [line.decode("utf-8").strip() for line in uploaded_file.readlines() if line.strip()]
     results = []
 
-    for ticker in tickers:
-        try:
-            print(f"Processing {ticker}...")
-            data = yf.download(ticker, period="3mo", interval="1d", auto_adjust=False)
-            if data.empty or "Close" not in data.columns:
-                print(f"No data for {ticker}. Skipping.")
-                continue
+    with st.spinner("Fetching RSI data..."):
+        for ticker in tickers:
+            try:
+                data = yf.download(ticker, period="3mo", interval="1d", auto_adjust=False)
+                if data.empty or "Close" not in data.columns:
+                    st.warning(f"No data for {ticker}. Skipping.")
+                    continue
 
-            close_prices = data["Close"]
-            rsi = calculate_rsi(close_prices)
-            current_rsi = rsi.iloc[-1]
-            results.append({"Ticker": ticker, "RSI": round(current_rsi, 2)})
+                close_prices = data["Close"]
+                rsi = calculate_rsi(close_prices)
+                current_rsi = rsi.iloc[-1]
+                results.append({"Ticker": ticker, "RSI": round(current_rsi, 2)})
 
-            if current_rsi < 30:
-                send_email(
-                    subject=f"RSI Alert: {ticker} is Oversold",
-                    body=f"The RSI for {ticker} has dropped below 30. Current RSI: {current_rsi:.2f}"
-                )
-            elif current_rsi > 70:
-                send_email(
-                    subject=f"RSI Alert: {ticker} is Overbought",
-                    body=f"The RSI for {ticker} has risen above 70. Current RSI: {current_rsi:.2f}"
-                )
+                if current_rsi < 30:
+                    send_email(
+                        subject=f"RSI Alert: {ticker} is Oversold",
+                        body=f"The RSI for {ticker} has dropped below 30. Current RSI: {current_rsi:.2f}"
+                    )
+                elif current_rsi > 70:
+                    send_email(
+                        subject=f"RSI Alert: {ticker} is Overbought",
+                        body=f"The RSI for {ticker} has risen above 70. Current RSI: {current_rsi:.2f}"
+                    )
 
-        except Exception as e:
-            print(f"Error processing {ticker}: {e}")
+            except Exception as e:
+                st.error(f"Error processing {ticker}: {e}")
 
     if results:
         df = pd.DataFrame(results)
-        print("\nCurrent RSI Values:")
-        print(df.to_string(index=False))
+        st.success("RSI data retrieved successfully!")
+        st.dataframe(df)
     else:
-        print("No RSI data was calculated.")
+        st.warning("No RSI data was calculated.")
+else:
+    st.info("Please upload a ticker list to begin.")
