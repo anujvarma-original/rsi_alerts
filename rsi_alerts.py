@@ -1,9 +1,9 @@
-import yfinance as yf
 import pandas as pd
 import smtplib
 from email.mime.text import MIMEText
 import streamlit as st
 import requests
+import time
 
 # Email sending function using Streamlit secrets
 def send_email(subject, body):
@@ -20,22 +20,25 @@ def send_email(subject, body):
         server.login(from_address, password)
         server.send_message(msg)
 
-# RSI calculation using Wilder's method
-def calculate_rsi(series, period=14):
-    if series.dropna().shape[0] < period + 1:
-        raise ValueError("Not enough data to calculate RSI")
-    delta = series.diff()
-    gain = delta.where(delta > 0, 0.0)
-    loss = -delta.where(delta < 0, 0.0)
-    avg_gain = gain.ewm(alpha=1/period, min_periods=period).mean()
-    avg_loss = loss.ewm(alpha=1/period, min_periods=period).mean()
-    rs = avg_gain / avg_loss
-    rsi = 100 - (100 / (1 + rs))
-    return rsi
+# Alpha Vantage RSI fetcher
+def get_rsi_alphavantage(ticker, api_key):
+    url = (
+        f"https://www.alphavantage.co/query?function=RSI&symbol={ticker}"
+        f"&interval=daily&time_period=14&series_type=close&apikey={api_key}"
+    )
+    response = requests.get(url)
+    data = response.json()
+    try:
+        rsi_data = data["Technical Analysis: RSI"]
+        latest_date = sorted(rsi_data.keys())[-1]
+        return float(rsi_data[latest_date]["RSI"])
+    except Exception as e:
+        print(f"Error fetching RSI for {ticker}: {e}")
+        return None
 
 # Streamlit UI
 st.set_page_config(page_title="RSI Monitor", layout="centered")
-st.title("📈 RSI Monitor for Stocks")
+st.title("📈 RSI Monitor via Alpha Vantage")
 
 # Read tickers from GitHub
 github_ticker_url = "https://raw.githubusercontent.com/anujvarma-original/rsi_alerts/main/tickers.txt"
@@ -47,41 +50,35 @@ except Exception as e:
     st.error(f"Failed to load tickers from GitHub: {e}")
     st.stop()
 
+api_key = st.secrets["ALPHAVANTAGE_KEY"]
 results = []
-with st.spinner("Fetching RSI data..."):
+
+with st.spinner("Fetching RSI data from Alpha Vantage..."):
     for ticker in tickers:
         try:
-            print(f"Processing {ticker}...")
-            data = yf.download(ticker, period="6mo", interval="1d", auto_adjust=True)
+            print(f"Fetching RSI for {ticker}...")
+            rsi_value = get_rsi_alphavantage(ticker, api_key)
+            time.sleep(12)  # to respect free tier rate limits (5 calls/min)
 
-            if data.empty or "Close" not in data.columns:
+            if rsi_value is None:
                 results.append({"Ticker": ticker, "RSI": "N/A", "Alert Status": "Data Missing"})
                 continue
 
-            close_prices = data["Close"].dropna()
-            print(f"{ticker} - closing prices available: {len(close_prices)}")
-
-            rsi_series = calculate_rsi(close_prices)
-            print(f"RSI series tail for {ticker}:\n{rsi_series.tail()}")
-
-            current_rsi = rsi_series.dropna().iloc[-1]
-            current_rsi = round(current_rsi, 2)
             alert_status = "Not Sent"
-
-            if current_rsi < 30:
+            if rsi_value < 30:
                 send_email(
                     subject=f"RSI Alert: {ticker} is Oversold",
-                    body=f"The RSI for {ticker} has dropped below 30. Current RSI: {current_rsi}"
+                    body=f"The RSI for {ticker} has dropped below 30. Current RSI: {rsi_value}"
                 )
                 alert_status = "Sent (Oversold)"
-            elif current_rsi > 70:
+            elif rsi_value > 70:
                 send_email(
                     subject=f"RSI Alert: {ticker} is Overbought",
-                    body=f"The RSI for {ticker} has risen above 70. Current RSI: {current_rsi}"
+                    body=f"The RSI for {ticker} has risen above 70. Current RSI: {rsi_value}"
                 )
                 alert_status = "Sent (Overbought)"
 
-            results.append({"Ticker": ticker, "RSI": current_rsi, "Alert Status": alert_status})
+            results.append({"Ticker": ticker, "RSI": round(rsi_value, 2), "Alert Status": alert_status})
 
         except Exception as e:
             print(f"Error processing {ticker}: {e}")
