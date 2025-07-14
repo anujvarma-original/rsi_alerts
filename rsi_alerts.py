@@ -38,7 +38,7 @@ st.set_page_config(page_title="RSI Monitor", layout="centered")
 st.title("📈 RSI Monitor for Stocks")
 
 # GitHub raw URL of tickers.txt
-github_ticker_url = "https://raw.githubusercontent.com/anujvarma-original/yencarrytrade/main/tickers.txt"
+github_ticker_url = "https://raw.githubusercontent.com/anujvarma-original/rsi_alerts/main/tickers.txt"
 
 try:
     response = requests.get(github_ticker_url)
