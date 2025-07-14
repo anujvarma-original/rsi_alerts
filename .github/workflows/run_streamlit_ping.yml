@@ -2,14 +2,34 @@ name: Daily Ping RSI Streamlit App
 
 on:
   schedule:
-    - cron: '0 8 * * *'  # Runs every day at 8:00 AM UTC
-  workflow_dispatch:  # Allows manual trigger from GitHub UI
+    - cron: '0 8 * * *'  # Every day at 8:00 AM UTC
+  workflow_dispatch:      # Allows manual trigger
 
 jobs:
-  ping-app:
+  wake-rsi-app:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Make GET request to Streamlit app
+      - name: Wake up the RSI Streamlit app
         run: |
-          curl --fail --silent --show-error "https://rsialerts.streamlit.app/"
+          echo "⏰ Waking RSI Streamlit app: https://rsialerts.streamlit.app/"
+
+          for i in {1..8}; do
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" \
+              https://rsialerts.streamlit.app/)
+
+            echo "Attempt $i: HTTP $HTTP_STATUS"
+
+            if [ "$HTTP_STATUS" -eq 200 ]; then
+              echo "✅ App is awake and responding."
+              exit 0
+            fi
+
+            echo "🛌 Still asleep... retrying in 15 seconds."
+            sleep 15
+          done
+
+          echo "❌ Failed to wake the RSI app after 8 attempts."
+          exit 1
+
