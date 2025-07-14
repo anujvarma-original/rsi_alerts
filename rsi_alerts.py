@@ -20,21 +20,34 @@ def send_email(subject, body):
         server.login(from_address, password)
         server.send_message(msg)
 
-# Alpha Vantage RSI fetcher
+# Alpha Vantage RSI fetcher with error diagnostics
 def get_rsi_alphavantage(ticker, api_key):
     url = (
         f"https://www.alphavantage.co/query?function=RSI&symbol={ticker}"
         f"&interval=daily&time_period=14&series_type=close&apikey={api_key}"
     )
-    response = requests.get(url)
-    data = response.json()
     try:
-        rsi_data = data["Technical Analysis: RSI"]
+        response = requests.get(url)
+        response.raise_for_status()
+        data = response.json()
+
+        if "Note" in data:
+            raise ValueError("API rate limit exceeded")
+        if "Error Message" in data:
+            raise ValueError("Invalid ticker or unsupported symbol")
+
+        rsi_data = data.get("Technical Analysis: RSI", {})
+        if not rsi_data:
+            raise ValueError("RSI data missing from response")
+
         latest_date = sorted(rsi_data.keys())[-1]
-        return float(rsi_data[latest_date]["RSI"])
+        rsi_value = rsi_data[latest_date].get("RSI")
+        if rsi_value is None:
+            raise ValueError("RSI value not found for latest date")
+
+        return float(rsi_value)
     except Exception as e:
-        print(f"Error fetching RSI for {ticker}: {e}")
-        return None
+        return f"Error: {str(e)}"
 
 # Streamlit UI
 st.set_page_config(page_title="RSI Monitor", layout="centered")
@@ -55,34 +68,29 @@ results = []
 
 with st.spinner("Fetching RSI data from Alpha Vantage..."):
     for ticker in tickers:
-        try:
-            print(f"Fetching RSI for {ticker}...")
-            rsi_value = get_rsi_alphavantage(ticker, api_key)
-            time.sleep(12)  # to respect free tier rate limits (5 calls/min)
+        print(f"Fetching RSI for {ticker}...")
+        rsi_value = get_rsi_alphavantage(ticker, api_key)
+        time.sleep(12)  # respect free tier limits
 
-            if rsi_value is None:
-                results.append({"Ticker": ticker, "RSI": "N/A", "Alert Status": "Data Missing"})
-                continue
+        if isinstance(rsi_value, str) and rsi_value.startswith("Error"):
+            results.append({"Ticker": ticker, "RSI": "N/A", "Alert Status": rsi_value})
+            continue
 
-            alert_status = "Not Sent"
-            if rsi_value < 30:
-                send_email(
-                    subject=f"RSI Alert: {ticker} is Oversold",
-                    body=f"The RSI for {ticker} has dropped below 30. Current RSI: {rsi_value}"
-                )
-                alert_status = "Sent (Oversold)"
-            elif rsi_value > 70:
-                send_email(
-                    subject=f"RSI Alert: {ticker} is Overbought",
-                    body=f"The RSI for {ticker} has risen above 70. Current RSI: {rsi_value}"
-                )
-                alert_status = "Sent (Overbought)"
+        alert_status = "Not Sent"
+        if rsi_value < 30:
+            send_email(
+                subject=f"RSI Alert: {ticker} is Oversold",
+                body=f"The RSI for {ticker} has dropped below 30. Current RSI: {rsi_value}"
+            )
+            alert_status = "Sent (Oversold)"
+        elif rsi_value > 70:
+            send_email(
+                subject=f"RSI Alert: {ticker} is Overbought",
+                body=f"The RSI for {ticker} has risen above 70. Current RSI: {rsi_value}"
+            )
+            alert_status = "Sent (Overbought)"
 
-            results.append({"Ticker": ticker, "RSI": round(rsi_value, 2), "Alert Status": alert_status})
-
-        except Exception as e:
-            print(f"Error processing {ticker}: {e}")
-            results.append({"Ticker": ticker, "RSI": "N/A", "Alert Status": f"Error: {str(e)}"})
+        results.append({"Ticker": ticker, "RSI": round(rsi_value, 2), "Alert Status": alert_status})
 
 # Display results
 if results:
