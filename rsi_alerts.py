@@ -1,4 +1,4 @@
-# rsi_alerts.py (Streamlit version with color-coded table)
+# rsi_alerts.py (Streamlit version with console + browser output)
 import yfinance as yf
 import pandas as pd
 import smtplib
@@ -45,9 +45,10 @@ if uploaded_file is not None:
     with st.spinner("Fetching RSI data..."):
         for ticker in tickers:
             try:
+                print(f"Processing {ticker}...")
                 data = yf.download(ticker, period="3mo", interval="1d", auto_adjust=False)
                 if data.empty or "Close" not in data.columns:
-                    st.warning(f"No data for {ticker}. Skipping.")
+                    print(f"No data for {ticker}. Skipping.")
                     continue
 
                 close_prices = data["Close"]
@@ -69,8 +70,10 @@ if uploaded_file is not None:
                     alert_status = "Sent (Overbought)"
 
                 results.append({"Ticker": ticker, "RSI": current_rsi, "Alert Status": alert_status})
+                print(f"{ticker}: RSI = {current_rsi}, Alert = {alert_status}")
 
             except Exception as e:
+                print(f"Error processing {ticker}: {e}")
                 st.error(f"Error processing {ticker}: {e}")
 
     if results:
@@ -86,10 +89,14 @@ if uploaded_file is not None:
 
         styled_df = df.style.format({"RSI": "{:.2f}"}).applymap(color_rsi, subset=["RSI"])
 
+        print("\nFinal RSI Summary:")
+        print(df.to_string(index=False))
+
         st.success("RSI data retrieved successfully!")
         st.write("### Current RSI Summary")
         st.dataframe(styled_df, use_container_width=True)
     else:
+        print("No RSI data was calculated.")
         st.warning("No RSI data was calculated.")
 else:
     st.info("Please upload a ticker list to begin.")
