@@ -1,0 +1,15 @@
+name: Daily Ping RSI Streamlit App
+
+on:
+  schedule:
+    - cron: '0 8 * * *'  # Runs every day at 8:00 AM UTC
+  workflow_dispatch:  # Allows manual trigger from GitHub UI
+
+jobs:
+  ping-app:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Make GET request to Streamlit app
+        run: |
+          curl --fail --silent --show-error "https://your-streamlit-url.streamlit.app"
