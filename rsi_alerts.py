@@ -1,4 +1,4 @@
-# rsi_alerts.py (Streamlit version with decoupled RSI calculation and rendering)
+# rsi_alerts.py (Streamlit version with fixed RSI calculation using Wilder's smoothing)
 import yfinance as yf
 import pandas as pd
 import smtplib
@@ -22,15 +22,15 @@ def send_email(subject, body):
         server.login(from_address, password)
         server.send_message(msg)
 
-# Calculate RSI (simple method)
+# Calculate RSI using Wilder's smoothing
 def calculate_rsi(series, period=14):
     if series.dropna().shape[0] < period + 1:
         raise ValueError("Not enough data to calculate RSI")
     delta = series.diff()
     gain = delta.where(delta > 0, 0.0)
     loss = -delta.where(delta < 0, 0.0)
-    avg_gain = gain.rolling(window=period).mean()
-    avg_loss = loss.rolling(window=period).mean()
+    avg_gain = gain.ewm(alpha=1/period, min_periods=period).mean()
+    avg_loss = loss.ewm(alpha=1/period, min_periods=period).mean()
     rs = avg_gain / avg_loss
     rsi = 100 - (100 / (1 + rs))
     return rsi
@@ -55,7 +55,7 @@ with st.spinner("Fetching RSI data..."):
     for ticker in tickers:
         try:
             print(f"Processing {ticker}...")
-            data = yf.download(ticker, period="3mo", interval="1d", auto_adjust=True)
+            data = yf.download(ticker, period="60d", interval="1d", auto_adjust=True)
 
             if data.empty or "Close" not in data.columns:
                 print(f"No data for {ticker}. Marking as unavailable.")
@@ -63,65 +63,4 @@ with st.spinner("Fetching RSI data..."):
                 continue
 
             close_prices = data["Close"].dropna()
-            print(f"Close prices for {ticker} (tail):\n{close_prices.tail(20)}")
-
-            try:
-                rsi_series = calculate_rsi(close_prices)
-                current_rsi = rsi_series.dropna().iloc[-1]
-                current_rsi = round(current_rsi, 2)
-            except ValueError as ve:
-                print(f"RSI calc error for {ticker}: {ve}")
-                results.append({"Ticker": ticker, "RSI": "N/A", "Alert Status": "Insufficient Data"})
-                continue
-
-            alert_status = "Not Sent"
-            if current_rsi < 30:
-                send_email(
-                    subject=f"RSI Alert: {ticker} is Oversold",
-                    body=f"The RSI for {ticker} has dropped below 30. Current RSI: {current_rsi:.2f}"
-                )
-                alert_status = "Sent (Oversold)"
-            elif current_rsi > 70:
-                send_email(
-                    subject=f"RSI Alert: {ticker} is Overbought",
-                    body=f"The RSI for {ticker} has risen above 70. Current RSI: {current_rsi:.2f}"
-                )
-                alert_status = "Sent (Overbought)"
-
-            print(f"Adding {ticker} with RSI={current_rsi}, Alert={alert_status}")
-            results.append({"Ticker": ticker, "RSI": current_rsi, "Alert Status": alert_status})
-
-        except Exception as e:
-            print(f"Error processing {ticker}: {e}")
-            results.append({"Ticker": ticker, "RSI": "N/A", "Alert Status": "Error"})
-            st.error(f"Error processing {ticker}: {e}")
-
-print(f"\nRSI summary rows: {len(results)}")
-
-# Format and display results in table
-if results:
-    df = pd.DataFrame(results)[["Ticker", "RSI", "Alert Status"]]
-
-    def color_rsi(val):
-        try:
-            v = float(val)
-            if v < 30:
-                return "background-color: #ffcccc"  # red shade
-            elif v > 70:
-                return "background-color: #ccffcc"  # green shade
-            else:
-                return "background-color: #ffffcc"  # yellow shade
-        except:
-            return "background-color: #f2f2f2"  # light grey for N/A
-
-    styled_df = df.style.format({"RSI": lambda x: f"{x:.2f}" if isinstance(x, (int, float)) else x}).applymap(color_rsi, subset=["RSI"])
-
-    print("\nFinal RSI Summary:")
-    print(df.to_string(index=False))
-
-    st.success("RSI data retrieved successfully!")
-    st.write("### Current RSI Summary")
-    st.dataframe(styled_df, use_container_width=True)
-else:
-    print("No RSI data was calculated.")
-    st.warning("No RSI data was calculated.", icon="⚠️")
+            print
