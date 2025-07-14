@@ -5,19 +5,21 @@ import streamlit as st
 import requests
 import time
 
-# Email sending function using Streamlit secrets
-def send_email(subject, body):
-    from_address = st.secrets["EMAIL_FROM"]
-    to_address = st.secrets["EMAIL_TO"]
-    password = st.secrets["EMAIL_PASS"]
+# Read email and API settings from secrets
+from_address = st.secrets["email"]["from"]
+to_address = st.secrets["email"]["to"]
+email_password = st.secrets["email"]["password"]
+api_key = st.secrets["alphavantage"]["ALPHAVANTAGE_KEY"]
 
+# Email sending function
+def send_email(subject, body):
     msg = MIMEText(body)
     msg["Subject"] = subject
     msg["From"] = from_address
     msg["To"] = to_address
 
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-        server.login(from_address, password)
+        server.login(from_address, email_password)
         server.send_message(msg)
 
 # Alpha Vantage RSI fetcher with error diagnostics
@@ -63,7 +65,6 @@ except Exception as e:
     st.error(f"Failed to load tickers from GitHub: {e}")
     st.stop()
 
-api_key = st.secrets["ALPHAVANTAGE_KEY"]
 results = []
 
 with st.spinner("Fetching RSI data from Alpha Vantage..."):
