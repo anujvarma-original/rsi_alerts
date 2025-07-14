@@ -113,7 +113,7 @@ if results:
         except:
             return "background-color: #f2f2f2"  # light grey for N/A
 
-    styled_df = df.style.format({"RSI": "{:.2f}"}).applymap(color_rsi, subset=["RSI"])
+    styled_df = df.style.format({"RSI": lambda x: f"{x:.2f}" if isinstance(x, (int, float)) else x}).applymap(color_rsi, subset=["RSI"])
 
     print("\nFinal RSI Summary:")
     print(df.to_string(index=False))
