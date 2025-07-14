@@ -1,4 +1,4 @@
-# rsi_alerts.py (Streamlit version with NaN RSI guard)
+# rsi_alerts.py (Streamlit version with robust RSI fix)
 import yfinance as yf
 import pandas as pd
 import smtplib
@@ -53,12 +53,12 @@ if uploaded_file is not None:
 
                 close_prices = data["Close"]
                 rsi = calculate_rsi(close_prices)
-                current_rsi = rsi.iloc[-1]
 
-                if pd.isna(current_rsi):
-                    print(f"RSI is NaN for {ticker}. Skipping.")
+                if rsi.empty or rsi.isna().all():
+                    print(f"RSI is empty or all NaN for {ticker}. Skipping.")
                     continue
 
+                current_rsi = rsi.dropna().iloc[-1]
                 current_rsi = round(current_rsi, 2)
                 alert_status = "Not Sent"
 
