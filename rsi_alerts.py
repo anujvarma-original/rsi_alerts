@@ -55,4 +55,35 @@ with st.spinner("Fetching RSI data..."):
     for ticker in tickers:
         try:
             print(f"Processing {ticker}...")
-            data = yf.download(ticker, period="60d", interval="1d", auto_adjust=T
+            data = yf.download(ticker, period="60d", interval="1d", auto_adjust=True)
+
+            if data.empty or "Close" not in data.columns:
+                print(f"No data for {ticker}. Marking as unavailable.")
+                results.append({"Ticker": ticker, "RSI": "N/A", "Alert Status": "Data Missing"})
+                continue
+
+            close_prices = data["Close"].dropna()
+            print(f"Close prices for {ticker} (tail):\n{close_prices.tail(20)}")
+
+            try:
+                rsi_series = calculate_rsi(close_prices)
+                print(f"RSI series tail for {ticker}:\n{rsi_series.tail(10)}")
+                print(f"RSI NaN count for {ticker}: {rsi_series.isna().sum()}")
+                current_rsi = rsi_series.dropna().iloc[-1]
+                current_rsi = round(current_rsi, 2)
+            except ValueError as ve:
+                print(f"RSI calc error for {ticker}: {ve}")
+                results.append({"Ticker": ticker, "RSI": "N/A", "Alert Status": "Insufficient Data"})
+                continue
+
+            alert_status = "Not Sent"
+            if current_rsi < 30:
+                send_email(
+                    subject=f"RSI Alert: {ticker} is Oversold",
+                    body=f"The RSI for {ticker} has dropped below 30. Current RSI: {current_rsi:.2f}"
+                )
+                alert_status = "Sent (Oversold)"
+            elif current_rsi > 70:
+                send_email(
+                    subject=f"RSI Alert: {ticker} is Overbought",
+                    body=f"The RSI for {ticker} has risen above 70. Current RSI: {current_r
