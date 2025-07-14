@@ -1,4 +1,4 @@
-# rsi_alerts.py (Streamlit version with alert status)
+# rsi_alerts.py (Streamlit version with color-coded table)
 import yfinance as yf
 import pandas as pd
 import smtplib
@@ -33,6 +33,7 @@ def calculate_rsi(series, period=14):
     return rsi
 
 # Streamlit UI
+st.set_page_config(page_title="RSI Monitor", layout="centered")
 st.title("📈 RSI Monitor for Stocks")
 
 uploaded_file = st.file_uploader("Upload a list of stock tickers (one per line)", type="txt")
@@ -73,11 +74,21 @@ if uploaded_file is not None:
                 st.error(f"Error processing {ticker}: {e}")
 
     if results:
-        df = pd.DataFrame(results)
-        df = df[["Ticker", "RSI", "Alert Status"]]
+        df = pd.DataFrame(results)[["Ticker", "RSI", "Alert Status"]]
+
+        def color_rsi(val):
+            if val < 30:
+                return "background-color: #ffcccc"  # red shade
+            elif val > 70:
+                return "background-color: #ccffcc"  # green shade
+            else:
+                return "background-color: #ffffcc"  # yellow shade
+
+        styled_df = df.style.format({"RSI": "{:.2f}"}).applymap(color_rsi, subset=["RSI"])
+
         st.success("RSI data retrieved successfully!")
         st.write("### Current RSI Summary")
-        st.dataframe(df.style.format({"RSI": "{:.2f}"}))
+        st.dataframe(styled_df, use_container_width=True)
     else:
         st.warning("No RSI data was calculated.")
 else:
