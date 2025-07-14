@@ -3,10 +3,8 @@ import yfinance as yf
 import pandas as pd
 import smtplib
 from email.mime.text import MIMEText
-import datetime
 import os
 
-FLAG_FILE = "/tmp/rsi_last_alert.txt"
 TICKERS_FILE = "tickers.txt"
 
 # Email configuration from environment or secrets
@@ -35,63 +33,38 @@ def calculate_rsi(series, period=14):
     rsi = 100 - (100 / (1 + rs))
     return rsi
 
-# Read last alert state
-def read_last_alert(ticker):
-    file = f"{FLAG_FILE}_{ticker}"
-    if not os.path.exists(file):
-        return "none"
-    with open(file, "r") as f:
-        return f.read().strip()
-
-# Update alert state
-def write_last_alert(ticker, state):
-    file = f"{FLAG_FILE}_{ticker}"
-    with open(file, "w") as f:
-        f.write(state)
-
-# Main logic
-def check_rsi_alert(ticker):
-    data = yf.download(ticker, period="3mo", interval="1d")
-    close_prices = data["Close"]
-    rsi = calculate_rsi(close_prices)
-    current_rsi = rsi.iloc[-1]
-
-    last_state = read_last_alert(ticker)
-
-    if current_rsi < 30 and last_state != "low":
-        send_email(
-            subject=f"RSI Alert for {ticker}: Oversold",
-            body=f"RSI dropped below 30. Current RSI: {current_rsi:.2f}"
-        )
-        write_last_alert(ticker, "low")
-
-    elif current_rsi > 70 and last_state != "high":
-        send_email(
-            subject=f"RSI Alert for {ticker}: Overbought",
-            body=f"RSI rose above 70. Current RSI: {current_rsi:.2f}"
-        )
-        write_last_alert(ticker, "high")
-
-    elif 30 <= current_rsi <= 70 and last_state != "neutral":
-        write_last_alert(ticker, "neutral")
-
-    return current_rsi
-
 if __name__ == "__main__":
     if not os.path.exists(TICKERS_FILE):
         print("Ticker file not found.")
-    else:
-        with open(TICKERS_FILE, "r") as f:
-            tickers = [line.strip() for line in f if line.strip()]
+        exit()
 
-        results = []
-        for ticker in tickers:
-            try:
-                rsi_value = check_rsi_alert(ticker)
-                results.append({"Ticker": ticker, "RSI": round(rsi_value, 2)})
-            except Exception as e:
-                print(f"Error processing {ticker}: {e}")
+    with open(TICKERS_FILE, "r") as f:
+        tickers = [line.strip() for line in f if line.strip()]
 
-        df = pd.DataFrame(results)
-        print("\nCurrent RSI Values:")
-        print(df.to_string(index=False))
+    results = []
+
+    for ticker in tickers:
+        try:
+            data = yf.download(ticker, period="3mo", interval="1d")
+            close_prices = data["Close"]
+            rsi = calculate_rsi(close_prices)
+            current_rsi = rsi.iloc[-1]
+            results.append({"Ticker": ticker, "RSI": round(current_rsi, 2)})
+
+            if current_rsi < 30:
+                send_email(
+                    subject=f"RSI Alert: {ticker} is Oversold",
+                    body=f"The RSI for {ticker} has dropped below 30. Current RSI: {current_rsi:.2f}"
+                )
+            elif current_rsi > 70:
+                send_email(
+                    subject=f"RSI Alert: {ticker} is Overbought",
+                    body=f"The RSI for {ticker} has risen above 70. Current RSI: {current_rsi:.2f}"
+                )
+
+        except Exception as e:
+            print(f"Error processing {ticker}: {e}")
+
+    df = pd.DataFrame(results)
+    print("\nCurrent RSI Values:")
+    print(df.to_string(index=False))
