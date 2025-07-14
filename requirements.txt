@@ -1,6 +1,5 @@
-streamlit
-pandas
-yfinance
-numpy
-matplotlib
-plotly
+pandas>=1.5
+yfinance>=0.2
+streamlit>=1.27
+requests>=2.28
+numpy>=1.23
