@@ -1,4 +1,4 @@
-# rsi_alerts.py (Streamlit version with robust RSI fix)
+# rsi_alerts.py (Streamlit version with full debug logging)
 import yfinance as yf
 import pandas as pd
 import smtplib
@@ -54,6 +54,9 @@ if uploaded_file is not None:
                 close_prices = data["Close"]
                 rsi = calculate_rsi(close_prices)
 
+                print(f"RSI raw series tail for {ticker}:")
+                print(rsi.tail())
+
                 if rsi.empty or rsi.isna().all():
                     print(f"RSI is empty or all NaN for {ticker}. Skipping.")
                     continue
@@ -75,12 +78,14 @@ if uploaded_file is not None:
                     )
                     alert_status = "Sent (Overbought)"
 
+                print(f"Adding {ticker} with RSI={current_rsi}, Alert={alert_status}")
                 results.append({"Ticker": ticker, "RSI": current_rsi, "Alert Status": alert_status})
-                print(f"{ticker}: RSI = {current_rsi}, Alert = {alert_status}")
 
             except Exception as e:
                 print(f"Error processing {ticker}: {e}")
                 st.error(f"Error processing {ticker}: {e}")
+
+    print(f"\nRSI summary rows: {len(results)}")
 
     if results:
         df = pd.DataFrame(results)[["Ticker", "RSI", "Alert Status"]]
