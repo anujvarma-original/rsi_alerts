@@ -62,8 +62,7 @@ with st.spinner("Fetching RSI data..."):
             print(f"{ticker} - closing prices available: {len(close_prices)}")
 
             rsi_series = calculate_rsi(close_prices)
-            print(f"RSI series tail for {ticker}:
-{rsi_series.tail()}")
+            print(f"RSI series tail for {ticker}:\n{rsi_series.tail()}")
 
             current_rsi = rsi_series.dropna().iloc[-1]
             current_rsi = round(current_rsi, 2)
