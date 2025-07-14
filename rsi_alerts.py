@@ -72,4 +72,13 @@ if uploaded_file is not None:
             except Exception as e:
                 st.error(f"Error processing {ticker}: {e}")
 
-    if resu
+    if results:
+        df = pd.DataFrame(results)
+        df = df[["Ticker", "RSI", "Alert Status"]]
+        st.success("RSI data retrieved successfully!")
+        st.write("### Current RSI Summary")
+        st.dataframe(df.style.format({"RSI": "{:.2f}"}))
+    else:
+        st.warning("No RSI data was calculated.")
+else:
+    st.info("Please upload a ticker list to begin.")
