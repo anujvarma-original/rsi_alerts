@@ -86,4 +86,30 @@ with st.spinner("Fetching RSI data..."):
 
         except Exception as e:
             print(f"Error processing {ticker}: {e}")
-            results.append({"Ticker":
+            results.append({"Ticker": ticker, "RSI": "N/A", "Alert Status": f"Error: {str(e)}"})
+
+# Display results
+if results:
+    df = pd.DataFrame(results)
+
+    def color_rsi(val):
+        try:
+            v = float(val)
+            if v < 30:
+                return "background-color: #ffcccc"
+            elif v > 70:
+                return "background-color: #ccffcc"
+            else:
+                return "background-color: #ffffcc"
+        except:
+            return "background-color: #f2f2f2"
+
+    styled_df = df.style.format({
+        "RSI": lambda x: f"{x:.2f}" if isinstance(x, (int, float)) else x
+    }).applymap(color_rsi, subset=["RSI"])
+
+    st.success("RSI data retrieved successfully!")
+    st.write("### Current RSI Summary")
+    st.dataframe(styled_df, use_container_width=True)
+else:
+    st.warning("No RSI data was calculated.", icon="⚠️")
