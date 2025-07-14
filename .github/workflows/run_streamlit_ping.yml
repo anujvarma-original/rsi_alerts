@@ -12,4 +12,4 @@ jobs:
     steps:
       - name: Make GET request to Streamlit app
         run: |
-          curl --fail --silent --show-error "https://your-streamlit-url.streamlit.app"
+          curl --fail --silent --show-error "https://rsialerts.streamlit.app/"
