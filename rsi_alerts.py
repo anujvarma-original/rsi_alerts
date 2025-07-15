@@ -1,4 +1,3 @@
-# rsi_alerts.py with fallback to Yahoo Finance for RSI
 import pandas as pd
 import smtplib
 from email.mime.text import MIMEText
@@ -24,18 +23,7 @@ def send_email(subject, body):
         server.login(from_address, email_password)
         server.send_message(msg)
 
-# Calculate RSI using Yahoo Finance fallback
-def calculate_rsi_yahoo(close_prices, period=14):
-    delta = close_prices.diff()
-    gain = delta.where(delta > 0, 0.0)
-    loss = -delta.where(delta < 0, 0.0)
-    avg_gain = gain.rolling(window=period).mean()
-    avg_loss = loss.rolling(window=period).mean()
-    rs = avg_gain / avg_loss
-    rsi = 100 - (100 / (1 + rs))
-    return rsi
-
-# Alpha Vantage RSI and price fetcher with fallback
+# Alpha Vantage RSI and price fetcher with fallback to Yahoo Finance
 def get_rsi_and_price(ticker, api_key):
     rsi_url = (
         f"https://www.alphavantage.co/query?function=RSI&symbol={ticker}"
@@ -55,9 +43,9 @@ def get_rsi_and_price(ticker, api_key):
         if "Error Message" in rsi_data:
             raise ValueError("Invalid ticker or unsupported symbol")
 
-        rsi_tech = rsi_data.get("Technical Analysis: RSI")
+        rsi_tech = rsi_data.get("Technical Analysis: RSI", {})
         if not rsi_tech:
-            raise ValueError("RSI data missing")
+            raise ValueError("RSI data missing from Alpha Vantage")
 
         latest_date = sorted(rsi_tech.keys())[-1]
         rsi_value = rsi_tech[latest_date].get("RSI")
@@ -76,83 +64,11 @@ def get_rsi_and_price(ticker, api_key):
         return float(rsi_value), float(price)
 
     except Exception as e:
-        print(f"Alpha Vantage failed for {ticker}: {e}. Falling back to Yahoo Finance.")
+        print(f"Alpha Vantage error for {ticker}: {e}. Falling back to Yahoo Finance.")
         try:
-            data = yf.download(ticker, period="2mo", interval="1d", progress=False)
+            data = yf.download(ticker, period="3mo", interval="1d", auto_adjust=True)
             if data.empty or "Close" not in data.columns:
-                raise ValueError("Yahoo Finance returned no data")
-            rsi_series = calculate_rsi_yahoo(data["Close"].dropna())
-            current_rsi = rsi_series.dropna().iloc[-1]
-            current_price = data["Close"].dropna().iloc[-1]
-            return float(current_rsi), float(current_price)
-        except Exception as e2:
-            return f"Error: {str(e2)}", None
+                return f"Error: No data found for {ticker}", None
 
-# Streamlit UI
-st.set_page_config(page_title="RSI Monitor", layout="centered")
-st.title("📈 RSI Monitor via Alpha Vantage with Yahoo Finance Fallback")
-
-# Read tickers from GitHub
-github_ticker_url = "https://raw.githubusercontent.com/anujvarma-original/rsi_alerts/main/tickers.txt"
-try:
-    response = requests.get(github_ticker_url)
-    response.raise_for_status()
-    tickers = [line.strip() for line in response.text.splitlines() if line.strip()]
-except Exception as e:
-    st.error(f"Failed to load tickers from GitHub: {e}")
-    st.stop()
-
-results = []
-
-with st.spinner("Fetching RSI and price data..."):
-    for ticker in tickers:
-        print(f"Fetching RSI and price for {ticker}...")
-        rsi_value, price = get_rsi_and_price(ticker, api_key)
-        time.sleep(12)
-
-        if isinstance(rsi_value, str) and rsi_value.startswith("Error"):
-            results.append({"Ticker": ticker, "RSI": "N/A", "Price": "N/A", "Alert Status": rsi_value})
-            continue
-
-        alert_status = "Not Sent"
-        if rsi_value < 30:
-            send_email(
-                subject=f"RSI Alert: {ticker} is Oversold",
-                body=f"The RSI for {ticker} has dropped below 30. Current RSI: {rsi_value:.2f}, Price: ${price:.2f}"
-            )
-            alert_status = "Sent (Oversold)"
-        elif rsi_value > 70:
-            send_email(
-                subject=f"RSI Alert: {ticker} is Overbought",
-                body=f"The RSI for {ticker} has risen above 70. Current RSI: {rsi_value:.2f}, Price: ${price:.2f}"
-            )
-            alert_status = "Sent (Overbought)"
-
-        results.append({"Ticker": ticker, "RSI": round(rsi_value, 2), "Price": round(price, 2), "Alert Status": alert_status})
-
-# Display results
-if results:
-    df = pd.DataFrame(results)
-
-    def color_rsi(val):
-    try:
-        v = float(val)
-        if v > 70:
-            return "background-color: #ffcccc"  # RED for overbought
-        elif v < 30:
-            return "background-color: #ccffcc"  # GREEN for oversold
-        else:
-            return "background-color: #ffffcc"  # YELLOW for neutral
-    except:
-        return "background-color: #f2f2f2"  # GREY for N/A
-
-    styled_df = df.style.format({
-        "RSI": lambda x: f"{x:.2f}" if isinstance(x, (int, float)) else x,
-        "Price": lambda x: f"${x:.2f}" if isinstance(x, (int, float)) else x
-    }).applymap(color_rsi, subset=["RSI"])
-
-    st.success("RSI and price data retrieved successfully!")
-    st.write("### Current RSI & Price Summary")
-    st.dataframe(styled_df, use_container_width=True)
-else:
-    st.warning("No RSI data was calculated.", icon="⚠️")
+            close_prices = data["Close"].dropna()
+            delta = clos
