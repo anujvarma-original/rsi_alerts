@@ -1,9 +1,9 @@
-name: Daily Ping RSI Streamlit App
+name: Ping RSI Streamlit App Every 12 Hours
 
 on:
   schedule:
-    - cron: '0 8 * * *'  # Every day at 8:00 AM UTC
-  workflow_dispatch:      # Allows manual trigger
+    - cron: '0 */12 * * *'  # Every 12 hours
+  workflow_dispatch:        # Allows manual trigger
 
 jobs:
   wake-rsi-app:
@@ -32,4 +32,3 @@ jobs:
 
           echo "❌ Failed to wake the RSI app after 8 attempts."
           exit 1
-
