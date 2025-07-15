@@ -120,4 +120,39 @@ with st.spinner("Fetching RSI and price data..."):
                 subject=f"RSI Alert: {ticker} is Oversold",
                 body=f"The RSI for {ticker} has dropped below 30. Current RSI: {rsi_value:.2f}, Price: ${price:.2f}"
             )
-            alert_status = "
+            alert_status = "Sent (Oversold)"
+        elif rsi_value > 70:
+            send_email(
+                subject=f"RSI Alert: {ticker} is Overbought",
+                body=f"The RSI for {ticker} has risen above 70. Current RSI: {rsi_value:.2f}, Price: ${price:.2f}"
+            )
+            alert_status = "Sent (Overbought)"
+
+        results.append({"Ticker": ticker, "RSI": round(rsi_value, 2), "Price": round(price, 2), "Alert Status": alert_status})
+
+# Display results
+if results:
+    df = pd.DataFrame(results)
+
+    def color_rsi(val):
+        try:
+            v = float(val)
+            if v < 30:
+                return "background-color: #ffcccc"
+            elif v > 70:
+                return "background-color: #ccffcc"
+            else:
+                return "background-color: #ffffcc"
+        except:
+            return "background-color: #f2f2f2"
+
+    styled_df = df.style.format({
+        "RSI": lambda x: f"{x:.2f}" if isinstance(x, (int, float)) else x,
+        "Price": lambda x: f"${x:.2f}" if isinstance(x, (int, float)) else x
+    }).applymap(color_rsi, subset=["RSI"])
+
+    st.success("RSI and price data retrieved successfully!")
+    st.write("### Current RSI & Price Summary")
+    st.dataframe(styled_df, use_container_width=True)
+else:
+    st.warning("No RSI data was calculated.", icon="⚠️")
