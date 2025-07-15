@@ -135,16 +135,16 @@ if results:
     df = pd.DataFrame(results)
 
     def color_rsi(val):
-        try:
-            v = float(val)
-            if v < 30:
-                return "background-color: #ffcccc"
-            elif v > 70:
-                return "background-color: #ccffcc"
-            else:
-                return "background-color: #ffffcc"
-        except:
-            return "background-color: #f2f2f2"
+    try:
+        v = float(val)
+        if v > 70:
+            return "background-color: #ffcccc"  # RED for overbought
+        elif v < 30:
+            return "background-color: #ccffcc"  # GREEN for oversold
+        else:
+            return "background-color: #ffffcc"  # YELLOW for neutral
+    except:
+        return "background-color: #f2f2f2"  # GREY for N/A
 
     styled_df = df.style.format({
         "RSI": lambda x: f"{x:.2f}" if isinstance(x, (int, float)) else x,
