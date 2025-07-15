@@ -71,4 +71,85 @@ def get_rsi_and_price(ticker, api_key):
                 return f"Error: No data found for {ticker}", None
 
             close_prices = data["Close"].dropna()
-            delta = clos
+            delta = close_prices.diff()
+            gain = delta.where(delta > 0, 0.0)
+            loss = -delta.where(delta < 0, 0.0)
+            avg_gain = gain.rolling(window=14).mean()
+            avg_loss = loss.rolling(window=14).mean()
+            rs = avg_gain / avg_loss
+            rsi_series = 100 - (100 / (1 + rs))
+
+            rsi_value = rsi_series.dropna().iloc[-1]
+            price = close_prices.iloc[-1]
+            return float(rsi_value), float(price)
+        except Exception as e2:
+            return f"Error: {str(e2)}", None
+
+# Streamlit UI
+st.set_page_config(page_title="RSI Monitor", layout="centered")
+st.title("📈 RSI Monitor via Alpha Vantage (with fallback)")
+
+# Read tickers from GitHub
+github_ticker_url = "https://raw.githubusercontent.com/anujvarma-original/rsi_alerts/main/tickers.txt"
+try:
+    response = requests.get(github_ticker_url)
+    response.raise_for_status()
+    tickers = [line.strip() for line in response.text.splitlines() if line.strip()]
+except Exception as e:
+    st.error(f"Failed to load tickers from GitHub: {e}")
+    st.stop()
+
+results = []
+
+with st.spinner("Fetching RSI and price data..."):
+    for ticker in tickers:
+        print(f"Fetching RSI and price for {ticker}...")
+        rsi_value, price = get_rsi_and_price(ticker, api_key)
+        time.sleep(12)  # respect API rate limits
+
+        if isinstance(rsi_value, str) and rsi_value.startswith("Error"):
+            results.append({"Ticker": ticker, "RSI": "N/A", "Price": "N/A", "Alert Status": rsi_value})
+            continue
+
+        alert_status = "Not Sent"
+        if rsi_value < 30:
+            send_email(
+                subject=f"RSI Alert: {ticker} is Oversold",
+                body=f"The RSI for {ticker} has dropped below 30. Current RSI: {rsi_value}, Price: ${price:.2f}"
+            )
+            alert_status = "Sent (Oversold)"
+        elif rsi_value > 70:
+            send_email(
+                subject=f"RSI Alert: {ticker} is Overbought",
+                body=f"The RSI for {ticker} has risen above 70. Current RSI: {rsi_value}, Price: ${price:.2f}"
+            )
+            alert_status = "Sent (Overbought)"
+
+        results.append({"Ticker": ticker, "RSI": round(rsi_value, 2), "Price": round(price, 2), "Alert Status": alert_status})
+
+# Display results
+if results:
+    df = pd.DataFrame(results)
+
+    def color_rsi(val):
+        try:
+            v = float(val)
+            if v > 70:
+                return "background-color: #ffcccc"  # RED for overbought
+            elif v < 30:
+                return "background-color: #ccffcc"  # GREEN for oversold
+            else:
+                return "background-color: #ffffcc"  # YELLOW for neutral
+        except:
+            return "background-color: #f2f2f2"  # GREY for N/A
+
+    styled_df = df.style.format({
+        "RSI": lambda x: f"{x:.2f}" if isinstance(x, (int, float)) else x,
+        "Price": lambda x: f"${x:.2f}" if isinstance(x, (int, float)) else x
+    }).applymap(color_rsi, subset=["RSI"])
+
+    st.success("RSI and price data retrieved successfully!")
+    st.write("### Current RSI & Price Summary")
+    st.dataframe(styled_df, use_container_width=True)
+else:
+    st.warning("No RSI data was calculated.", icon="⚠️")
