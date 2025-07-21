@@ -1,34 +1,33 @@
-name: Ping RSI Streamlit App Every 12 Hours
+name: Ping RSI Streamlit App Daily
 
 on:
   schedule:
-    - cron: '0 */12 * * *'  # Every 12 hours
-  workflow_dispatch:        # Allows manual trigger
+    - cron: '0 6 * * *'  # Every day at 6:00 AM UTC
+  workflow_dispatch:       # Allows manual trigger
 
 jobs:
   wake-rsi-app:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Wake up the RSI Streamlit app
+      - name: Wait before pinging (optional delay)
         run: |
-          echo "⏰ Waking RSI Streamlit app: https://rsialerts.streamlit.app/"
+          echo "⏳ Waiting 60 seconds before pinging the RSI app..."
+          sleep 60
 
-          for i in {1..8}; do
-            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-              -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" \
-              https://rsialerts.streamlit.app/)
+      - name: Ping the RSI Streamlit app
+        run: |
+          echo "📡 Pinging RSI Streamlit app: https://rsialerts.streamlit.app/"
 
-            echo "Attempt $i: HTTP $HTTP_STATUS"
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" \
+            https://rsialerts.streamlit.app/)
 
-            if [ "$HTTP_STATUS" -eq 200 ]; then
-              echo "✅ App is awake and responding."
-              exit 0
-            fi
+          echo "HTTP Status: $HTTP_STATUS"
 
-            echo "🛌 Still asleep... retrying in 15 seconds."
-            sleep 15
-          done
-
-          echo "❌ Failed to wake the RSI app after 8 attempts."
-          exit 1
+          if [ "$HTTP_STATUS" -eq 200 ]; then
+            echo "✅ App is awake and responding."
+          else
+            echo "❌ Failed to reach app. HTTP status: $HTTP_STATUS"
+            exit 1
+          fi
