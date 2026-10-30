@@ -5,6 +5,7 @@ import streamlit as st
 import requests
 import yfinance as yf
 import time
+import math
 
 # Read email and API settings from secrets
 from_address = st.secrets["email"]["from"]
@@ -34,7 +35,7 @@ def get_rsi_and_price(ticker, api_key):
         f"&apikey={api_key}"
     )
     try:
-        rsi_response = requests.get(rsi_url)
+        rsi_response = requests.get(rsi_url, timeout=20)
         rsi_response.raise_for_status()
         rsi_data = rsi_response.json()
 
@@ -52,7 +53,7 @@ def get_rsi_and_price(ticker, api_key):
         if rsi_value is None:
             raise ValueError("RSI value not found")
 
-        price_response = requests.get(price_url)
+        price_response = requests.get(price_url, timeout=20)
         price_response.raise_for_status()
         price_data = price_response.json()
         quote = price_data.get("Global Quote", {})
@@ -61,29 +62,50 @@ def get_rsi_and_price(ticker, api_key):
         if price is None:
             raise ValueError("Price data missing")
 
-        return float(rsi_value), float(price)
+        rsi_value, price = float(rsi_value), float(price)
+        if not math.isfinite(rsi_value) or not 0 <= rsi_value <= 100 or not math.isfinite(price) or price <= 0:
+            raise ValueError("Provider returned invalid RSI or price")
+        return rsi_value, price
 
     except Exception as e:
         print(f"Alpha Vantage error for {ticker}: {e}. Falling back to Yahoo Finance.")
         try:
-            data = yf.download(ticker, period="3mo", interval="1d", auto_adjust=True)
-            if data.empty or "Close" not in data.columns:
-                return f"Error: No data found for {ticker}", None
-
-            close_prices = data["Close"].dropna()
-            delta = close_prices.diff()
-            gain = delta.where(delta > 0, 0.0)
-            loss = -delta.where(delta < 0, 0.0)
-            avg_gain = gain.rolling(window=14).mean()
-            avg_loss = loss.rolling(window=14).mean()
-            rs = avg_gain / avg_loss
-            rsi_series = 100 - (100 / (1 + rs))
-
-            rsi_value = rsi_series.dropna().iloc[-1]
-            price = close_prices.iloc[-1]
-            return float(rsi_value), float(price)
+            data = yf.download(
+                ticker.replace(".", "-"), period="3mo", interval="1d",
+                auto_adjust=True, progress=False, threads=False, timeout=20,
+            )
+            rsi_value, price = calculate_rsi_and_price(data)
+            return rsi_value, price
         except Exception as e2:
             return f"Error: {str(e2)}", None
+
+def calculate_rsi_and_price(data, period=14):
+    """Normalize Yahoo's single-ticker columns and compute the existing SMA RSI."""
+    if data is None or data.empty or "Close" not in data.columns:
+        raise ValueError("No closing-price data returned")
+    close = data["Close"]
+    # Recent yfinance versions return a DataFrame even for one ticker.
+    if isinstance(close, pd.DataFrame):
+        if close.shape[1] != 1:
+            raise ValueError("Expected closing prices for exactly one ticker")
+        close = close.iloc[:, 0]
+    close = pd.to_numeric(close, errors="coerce").replace(
+        [float("inf"), float("-inf")], float("nan")
+    ).dropna().sort_index()
+    if len(close) < period + 1:
+        raise ValueError(f"Need at least {period + 1} valid closing prices")
+    delta = close.diff()
+    avg_gain = delta.clip(lower=0).rolling(period, min_periods=period).mean()
+    avg_loss = (-delta.clip(upper=0)).rolling(period, min_periods=period).mean()
+    gain, loss = float(avg_gain.iloc[-1]), float(avg_loss.iloc[-1])
+    # Avoid 0/0 (flat prices) and division by zero (all gains).
+    rsi = 50.0 if gain == 0 and loss == 0 else (
+        100.0 if loss == 0 else 100 - 100 / (1 + gain / loss)
+    )
+    price = float(close.iloc[-1])
+    if not math.isfinite(rsi) or not math.isfinite(price) or price <= 0:
+        raise ValueError("Unable to calculate a valid RSI and price")
+    return float(rsi), price
 
 # Streamlit UI
 st.set_page_config(page_title="RSI Monitor", layout="centered")
@@ -92,7 +114,7 @@ st.title("📈 RSI Monitor via Alpha Vantage (with fallback)")
 # Read tickers from GitHub
 github_ticker_url = "https://raw.githubusercontent.com/anujvarma-original/rsi_alerts/main/tickers.txt"
 try:
-    response = requests.get(github_ticker_url)
+    response = requests.get(github_ticker_url, timeout=20)
     response.raise_for_status()
     tickers = [line.strip() for line in response.text.splitlines() if line.strip()]
 except Exception as e:
@@ -112,18 +134,21 @@ with st.spinner("Fetching RSI and price data..."):
             continue
 
         alert_status = "Not Sent"
-        if rsi_value < 30:
-            send_email(
-                subject=f"RSI Alert: {ticker} is Oversold",
-                body=f"The RSI for {ticker} has dropped below 30. Current RSI: {rsi_value}, Price: ${price:.2f}"
-            )
-            alert_status = "Sent (Oversold)"
-        elif rsi_value > 70:
-            send_email(
-                subject=f"RSI Alert: {ticker} is Overbought",
-                body=f"The RSI for {ticker} has risen above 70. Current RSI: {rsi_value}, Price: ${price:.2f}"
-            )
-            alert_status = "Sent (Overbought)"
+        try:
+            if rsi_value < 30:
+                send_email(
+                    subject=f"RSI Alert: {ticker} is Oversold",
+                    body=f"The RSI for {ticker} has dropped below 30. Current RSI: {rsi_value}, Price: ${price:.2f}"
+                )
+                alert_status = "Sent (Oversold)"
+            elif rsi_value > 70:
+                send_email(
+                    subject=f"RSI Alert: {ticker} is Overbought",
+                    body=f"The RSI for {ticker} has risen above 70. Current RSI: {rsi_value}, Price: ${price:.2f}"
+                )
+                alert_status = "Sent (Overbought)"
+        except Exception as exc:
+            alert_status = f"Email failed: {exc}"
 
         results.append({"Ticker": ticker, "RSI": round(rsi_value, 2), "Price": round(price, 2), "Alert Status": alert_status})
 
@@ -148,8 +173,12 @@ if results:
         "Price": lambda x: f"${x:.2f}" if isinstance(x, (int, float)) else x
     }).map(color_rsi, subset=["RSI"])
 
-    st.success("RSI and price data retrieved successfully!")
+    valid_count = sum(isinstance(row["RSI"], (int, float)) for row in results)
+    if valid_count == len(results):
+        st.success(f"Retrieved RSI and price for all {valid_count} tickers.")
+    else:
+        st.warning(f"Retrieved {valid_count} of {len(results)} tickers. See Alert Status for errors.")
     st.write("### Current RSI & Price Summary")
-    st.dataframe(styled_df, use_container_width=True)
+    st.dataframe(styled_df, width="stretch", hide_index=True)
 else:
     st.warning("No RSI data was calculated.", icon="⚠️")
