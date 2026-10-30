@@ -146,7 +146,7 @@ if results:
     styled_df = df.style.format({
         "RSI": lambda x: f"{x:.2f}" if isinstance(x, (int, float)) else x,
         "Price": lambda x: f"${x:.2f}" if isinstance(x, (int, float)) else x
-    }).applymap(color_rsi, subset=["RSI"])
+    }).map(color_rsi, subset=["RSI"])
 
     st.success("RSI and price data retrieved successfully!")
     st.write("### Current RSI & Price Summary")
